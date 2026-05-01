@@ -1,7 +1,6 @@
 package de.jpx3.intave.check.combat.clickpatterns;
 
 import java.util.Collection;
-import de.jpx3.intave.metric.ServerHealth;
 
 public final class ClickMathUtils {
 
@@ -19,15 +18,7 @@ public final class ClickMathUtils {
     public static double getCPS(Collection<? extends Number> data) {
         double mean = getMean(data);
         if (mean <= 0.0) return 0.0;
-
-        // improved how the method get the cps
-        double[] tpsArray = ServerHealth.recentTickAverage();
-        double rawTPS = (tpsArray != null && tpsArray.length > 0) ? tpsArray[0] : 20.0;
-
-        double safeTPS = Math.max(1.0, Math.min(20.0, rawTPS));
-
-        double cps = safeTPS / mean;
-        return Math.min(cps, 500.0);
+        return Math.min(20.0 / mean, 500.0);
     }
 
     public static double getVariance(Collection<? extends Number> data) {

@@ -3,7 +3,6 @@ package de.jpx3.intave.check.combat.clickpatterns;
 import com.comphenix.protocol.events.PacketEvent;
 import de.jpx3.intave.check.MetaCheckPart;
 import de.jpx3.intave.check.combat.ClickPatterns;
-import de.jpx3.intave.metric.ServerHealth;
 import de.jpx3.intave.module.linker.packet.PacketSubscription;
 import de.jpx3.intave.user.User;
 import de.jpx3.intave.user.meta.AttackMetadata;
@@ -17,41 +16,54 @@ import java.util.Deque;
 
 import static de.jpx3.intave.math.MathHelper.formatDouble;
 import static de.jpx3.intave.module.linker.packet.PacketId.Client.ARM_ANIMATION;
+import static de.jpx3.intave.module.linker.packet.PacketId.Client.FLYING;
+import static de.jpx3.intave.module.linker.packet.PacketId.Client.LOOK;
+import static de.jpx3.intave.module.linker.packet.PacketId.Client.POSITION;
+import static de.jpx3.intave.module.linker.packet.PacketId.Client.POSITION_LOOK;
 
 public final class ConsistencyAnalysis extends MetaCheckPart<ClickPatterns, ConsistencyAnalysis.ConsistencyMeta> {
-    private static final int BUFFER_TIMEOUT = 2500;
+    private static final int BUFFER_TIMEOUT = 50;
     private static final int BUFFER_LENGTH = 50;
 
     public ConsistencyAnalysis(ClickPatterns parentCheck) {
         super(parentCheck, ConsistencyMeta.class);
     }
 
-    @PacketSubscription(
-            packetsIn = ARM_ANIMATION
-    )
-    public void receiveSwing(PacketEvent event) {
+    @PacketSubscription(packetsIn = ARM_ANIMATION)
+    public void onSwing(PacketEvent event) {
+        Player player = event.getPlayer();
+        User user = userOf(player);
+        ConsistencyMeta meta = metaOf(user);
+        meta.queuedSwings++;
+    }
+
+    @PacketSubscription(packetsIn = {FLYING, LOOK, POSITION, POSITION_LOOK})
+    public void onTick(PacketEvent event) {
         Player player = event.getPlayer();
         User user = userOf(player);
         ConsistencyMeta meta = metaOf(user);
 
-        long now = System.currentTimeMillis();
-        if (meta.lastSwing == 0) {
-            meta.lastSwing = now;
-            return;
-        }
+        meta.currentTick++;
 
-        long swingDifferenceMs = now - meta.lastSwing;
-        meta.lastSwing = now;
+        int swings = meta.queuedSwings;
+        meta.queuedSwings = 0;
 
-        if (checkDeactivated(user, swingDifferenceMs)) {
-            meta.intervals.clear();
-            return;
-        }
+        for (int i = 0; i < swings; i++) {
+            long delayTicks = meta.currentTick - meta.lastSwingTick;
+            
+            if (meta.lastSwingTick == 0) {
+                meta.lastSwingTick = meta.currentTick;
+                continue;
+            }
+            
+            meta.lastSwingTick = meta.currentTick;
 
-        double currentTPS = ServerHealth.recentTickAverage()[0];
-        double msPerTick = 1000.0 / Math.max(1.0, currentTPS);
-        double ticks = swingDifferenceMs / msPerTick;
-        meta.intervals.add(ticks);
+            if (checkDeactivated(user, delayTicks)) {
+                meta.intervals.clear();
+                continue;
+            }
+
+            meta.intervals.add((double) delayTicks);
 
         if (meta.intervals.size() >= BUFFER_LENGTH) {
             double std = ClickMathUtils.getStandardDeviation(meta.intervals);
@@ -89,6 +101,7 @@ public final class ConsistencyAnalysis extends MetaCheckPart<ClickPatterns, Cons
             meta.lastStandardDeviation = std;
             meta.intervals.clear();
         }
+        }
     }
 
     private boolean checkDeactivated(User user, long swingDifference) {
@@ -102,7 +115,9 @@ public final class ConsistencyAnalysis extends MetaCheckPart<ClickPatterns, Cons
 
     public static class ConsistencyMeta extends CheckCustomMetadata {
         private final Deque<Double> intervals = new ArrayDeque<>();
-        private long lastSwing = 0;
+        private long currentTick = 0;
+        private long lastSwingTick = 0;
+        private int queuedSwings = 0;
         private double buffer = 0;
         private double diffBuffer = 0;
         private double lastStandardDeviation = 0;
