@@ -52,8 +52,12 @@ import de.jpx3.intave.user.MessageChannel;
 import de.jpx3.intave.user.User;
 import de.jpx3.intave.user.UserRepository;
 import de.jpx3.intave.user.meta.*;
+import de.jpx3.intave.world.Particles;
 import de.jpx3.intave.world.WorldHeight;
-import org.bukkit.*;
+import org.bukkit.ChatColor;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.EventPriority;
@@ -420,7 +424,7 @@ public final class MovementDispatcher extends Module {
     movementData.updateMovement(packet, hasMovement, hasRotation);
     teleportApplyEnforcer.receiveMovement(event);
 
-    if (IntaveControl.DEBUG_COLLISION_BOXES) {
+    if (IntaveControl.DEBUG_COLLISION_BOXES || user.receives(MessageChannel.DEBUG_COLLISIONS)) {
       BoundingBox box = movementData.boundingBox().grow(0.1);
       BlockShape shape = Collision.shape(player, box);
       List<BoundingBox> boundingBoxes = shape.boundingBoxes();
@@ -610,38 +614,11 @@ public final class MovementDispatcher extends Module {
   }
 
   private void drawDebugBoxes(User user, List<BoundingBox> boxes) {
-    if (IntaveControl.DEBUG_COLLISION_BOXES && MinecraftVersions.VER1_13_0.atOrAbove()) {
-      boxes
-        .stream()
-        .flatMap(box -> box.vertices().stream())
-        .distinct()
-        .forEach(position -> spawnParticleAt(user, position));
-    }
-  }
-
-  private void spawnParticleAt(User user, Position position) {
-    user.player().getWorld().spawnParticle(
-      (Particle) particle(),
-      position.toLocation(user.player().getWorld()),
-      1
-    );
-  }
-
-  private Object particleCache;
-
-  private Object particle() {
-    if (particleCache == null) {
-      try {
-        try {
-          particleCache = Particle.VILLAGER_HAPPY;
-        } catch (NoSuchFieldError e) {
-          particleCache = Particle.class.getField("HAPPY_VILLAGER").get(null);
-        }
-      } catch (IllegalAccessException | NoSuchFieldException e) {
-        throw new RuntimeException(e);
-      }
-    }
-    return particleCache;
+    boxes
+      .stream()
+      .flatMap(box -> box.vertices().stream())
+      .distinct()
+      .forEach(position -> Particles.spawnVillagerHappyParticleAt(user, position));
   }
 
   private void updatePotionEffects(User user) {
@@ -751,6 +728,10 @@ public final class MovementDispatcher extends Module {
     if (!vehicleMove && !movement.awaitTeleport && !movement.awaitOutgoingTeleport && !movement.invalidMovement && !movement.dropPostTickMotionProcessing) {
       if (claimsToBeOnGround != movement.onGround) {
         double requiredFallDistance = Collision.present(player, user.meta().movement().boundingBox().grow(0.1, 0.1, 0.1)) ? 0.5 : 0.1;
+        boolean shulkerInteraction = movement.shulkerXToleranceRemaining > 0 || movement.shulkerYToleranceRemaining > 0 || movement.shulkerZToleranceRemaining > 0;
+        if (shulkerInteraction) {
+          requiredFallDistance = Math.max(requiredFallDistance, 3);
+        }
         if (movement.artificialFallDistance > requiredFallDistance && !movement.onGround && claimsToBeOnGround) {
           Violation violation = Violation.builderFor(Physics.class)
             .forPlayer(player)

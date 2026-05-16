@@ -145,8 +145,6 @@ tasks.register<RunServer>("authtest") {
 //  jvmArgs("-Dintave.test.success=shutdown")
   javaLauncher.set(
     project.javaToolchains.launcherFor {
-      // Sets the JDK version for the Minecraft server, Intave is still built using Java
-      // 1.8
       languageVersion.set(JavaLanguageVersion.of(17))
     }
   )
@@ -165,8 +163,6 @@ tasks.register<RunServer>("gommetest") {
 //  jvmArgs("-Dintave.test.success=shutdown")
   javaLauncher.set(
     project.javaToolchains.launcherFor {
-      // Sets the JDK version for the Minecraft server, Intave is still built using Java
-      // 1.8
       languageVersion.set(JavaLanguageVersion.of(8))
     }
   )
@@ -187,8 +183,6 @@ tasks.register<RunServer>("authtest_1.20.1") {
 //  jvmArgs("-Dintave.test.success=shutdown")
   javaLauncher.set(
     project.javaToolchains.launcherFor {
-      // Sets the JDK version for the Minecraft server, Intave is still built using Java
-      // 1.8
       languageVersion.set(JavaLanguageVersion.of(17))
     }
   )
@@ -229,11 +223,9 @@ fun dumpBuildConfig() {
   buildConfigFields.forEach { println("  ${it.name} = ${it.value.get()}") }
 }
 
-val serverVersions = mapOf(
+val paperRunConfigs = mapOf(
   Pair("1.8.8", 17),
   Pair("1.9.4", 8),
-//  Pair("1.10.2", 8),
-//  Pair("1.11.2", 8),
   Pair("1.12.2", 17),
   Pair("1.14.4", 11),
   Pair("1.15.2", 11),
@@ -245,8 +237,6 @@ val serverVersions = mapOf(
   Pair("1.20.1", 17),
   Pair("1.20.2", 17),
   Pair("1.20.4", 17),
-//  Pair("1.20.6", 21),
-//  Pair("1.21", 21),
   Pair("1.21.1", 21),
   Pair("1.21.3", 21),
   Pair("1.21.4", 21),
@@ -255,14 +245,21 @@ val serverVersions = mapOf(
   Pair("26.1.2", 25),
 )
 
+val foliaRunConfigs = mapOf(
+  Pair("26.1.2", 25)
+)
+
 run {
-  serverVersions.forEach { server, java ->
-    registerTestTask(server, java)
-    registerServerTask(server, java)
+  paperRunConfigs.forEach { server, java ->
+    registerPaperTestTask(server, java)
+    registerPaperRunTask(server, java)
+  }
+  foliaRunConfigs.forEach { server, java ->
+    registerFoliaRunTask(server, java)
   }
 }
 
-fun registerTestTask(serverVersion: String, javaVersion: Int) {
+fun registerPaperTestTask(serverVersion: String, javaVersion: Int) {
   tasks.register<RunServer>("test_${serverVersion}") {
     group = simpleName
     dependsOn("build")
@@ -271,6 +268,9 @@ fun registerTestTask(serverVersion: String, javaVersion: Int) {
     // Minecraft 1.8.8 requires special patches to work with Java 17
     if (serverVersion == "1.8.8") {
       serverJar(File("libs/servers/panda-1.8.8.jar"))
+    }
+    if (serverVersion == "1.9.4") {
+      serverJar(File("libs/servers/spigot-1.9.4.jar"))
     }
     if (serverVersion == "1.21.7") {
       serverJar(File("libs/servers/paper-1.21.7-15.jar"))
@@ -293,11 +293,11 @@ run {
 fun registerTestAllTask() {
   tasks.register("test_all") {
     group = simpleName
-    dependsOn(serverVersions.keys.map { "test_$it" })
+    dependsOn(paperRunConfigs.keys.map { "test_$it" })
   }
 }
 
-fun registerServerTask(serverVersion: String, javaVersion: Int) {
+fun registerPaperRunTask(serverVersion: String, javaVersion: Int) {
   tasks.register<RunServer>("run_${serverVersion}") {
     group = simpleName
     dependsOn("build")
@@ -307,19 +307,40 @@ fun registerServerTask(serverVersion: String, javaVersion: Int) {
     if (serverVersion == "1.8.8") {
       serverJar(File("libs/servers/panda-1.8.8.jar"))
     }
+    if (serverVersion == "1.9.4") {
+      serverJar(File("libs/servers/spigot-1.9.4.jar"))
+    }
     if (serverVersion == "1.21.7") {
       serverJar(File("libs/servers/paper-1.21.7-15.jar"))
     }
     runDirectory(File("runs/paper_${serverVersion}-j$javaVersion"))
     jvmArgs("-Dcom.mojang.eula.agree=true")
+    // set online mode to false
+    args("-o", "false")
     javaLauncher.set(
       project.javaToolchains.launcherFor {
-        // Sets the JDK version for the Minecraft server, Intave is still built using Java
-        // 1.8
         languageVersion.set(JavaLanguageVersion.of(javaVersion))
       }
     )
   }
+}
+
+fun registerFoliaRunTask(serverVersion: String, javaVersion: Int) {
+  runPaper.folia.registerTask({
+//    name = "run_folia_$serverVersion"
+    group = simpleName
+    dependsOn("build")
+    pluginJars.from("build/libs/$simpleName.jar")
+    minecraftVersion(serverVersion)
+    runDirectory(File("runs/folia_${serverVersion}-j$javaVersion"))
+    jvmArgs("-Dcom.mojang.eula.agree=true")
+    args("-o", "false")
+    javaLauncher.set(
+      project.javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(javaVersion))
+      }
+    )
+  });
 }
 
 /*
